@@ -1,0 +1,12 @@
+[submodule "debian-codemods"]
+	path = debian-codemods
+	url = https://salsa.debian.org/jelmer/debian-codemods
+[submodule "devscripts"]
+	path = devscripts
+	url = https://salsa.debian.org/debian/devscripts
+[submodule "hello-debian"]
+	path = hello-debian
+	url = https://github.com/streadway/hello-debian.git
+[submodule "openssl"]
+	path = openssl
+	url = https://salsa.debian.org/debian/openssl.git
