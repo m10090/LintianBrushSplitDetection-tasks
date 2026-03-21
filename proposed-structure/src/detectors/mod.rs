@@ -1,0 +1,11 @@
+//! Detectors module - contains all detector implementations
+
+pub mod binary_control_field_duplicates_source;
+pub mod debian_control_has_empty_field;
+pub mod debian_control_has_unusual_field_spacing;
+pub mod field_name_typo_in_control;
+
+pub use binary_control_field_duplicates_source::DetectorImpl as BinaryControlFieldDuplicatesSourceDetector;
+pub use debian_control_has_empty_field::DetectorImpl as DebianControlHasEmptyFieldDetector;
+pub use debian_control_has_unusual_field_spacing::DetectorImpl as DebianControlHasUnusualFieldSpacingDetector;
+pub use field_name_typo_in_control::DetectorImpl as FieldNameTypoInControlDetector;

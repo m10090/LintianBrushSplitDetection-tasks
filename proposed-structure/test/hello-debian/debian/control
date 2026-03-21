@@ -1,0 +1,15 @@
+Source: hello-debian
+Section: utils
+Priority: optional
+HomePage: https://example.com/hello-debian
+Build-Depends:  debhelper (>= 13)
+Maintainer:
+
+Package: hello-debian
+Section: admin
+Architecture:  any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Priority: optional
+Provides:
+Description: Example package maintenance demo
+ A small fixture package used to exercise detector and fixer behavior.

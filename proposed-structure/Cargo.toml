@@ -1,0 +1,22 @@
+[package]
+name = "proposed-structure"
+version = "0.1.0"
+edition = "2024"
+description = "Detectors for Debian control files - detection only, no fixing"
+
+[[bin]]
+name = "proposed-structure"
+path = "src/cli.rs"
+
+[dependencies]
+# Debian file format parsers
+deb822-lossless = "0.5"
+regex = "1"
+thiserror = "1"
+inventory = "0.3"
+lazy_static = "1.5.0"
+debian-analyzer = "0.160.14"
+clap = { version = "4.5", features = ["derive"] }
+
+[dev-dependencies]
+tempfile = "3"
