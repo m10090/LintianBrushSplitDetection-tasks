@@ -44,8 +44,8 @@ macro_rules! declare_detector {
             fn detect(
                 &self,
                 files: &$crate::DebianFiles,
-            ) -> Result<Vec<$crate::DetectedIssue>, $crate::DetectorError> {
-                let detect_fn: fn(&$crate::DebianFiles) -> Result<Vec<$crate::DetectedIssue>, $crate::DetectorError> = $detect_fn;
+            ) -> Result<Vec<($crate::DetectedIssue, Option<Box<dyn FnOnce() -> ()>>)>, $crate::DetectorError> {
+                let detect_fn: fn(&$crate::DebianFiles) -> Result<Vec<($crate::DetectedIssue, Option<Box<dyn FnOnce() -> ()>>)>, $crate::DetectorError> = $detect_fn;
                 detect_fn(files)
             }
         }
@@ -133,5 +133,31 @@ macro_rules! declare_fixer {
                 create: || Box::new(FixerImpl),
             }
         }
+    };
+}
+
+#[macro_export]
+macro_rules! create_issue {
+    (
+        package: $package:expr,
+        package_type: $package_type:expr,
+        line: $line:expr,
+        description: $description:expr,
+        field: $field:expr,
+        tag: $tag:literal ,
+        apply: $apply_fn:expr
+    ) => {
+        (
+            $crate::DetectedIssue {
+                tag: $tag.to_string(),
+                description: $description,
+                package: $package.clone(),
+                package_type: $package_type,
+                line: $line,
+                field: $field,
+                detector_name: DETECTOR_NAME,
+            },
+            Some(Box::new($apply_fn) as Box<dyn FnOnce()>),
+        )
     };
 }
