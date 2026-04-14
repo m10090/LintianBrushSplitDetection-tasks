@@ -3,9 +3,11 @@
 //! Detects when a binary package paragraph contains a field with the same
 //! name and value as the source paragraph, which is redundant.
 
-use crate::{DebianFiles, DetectedIssue, DetectorError, PackageType};
+use crate::{
+    DETECTORS, DebianFiles, DetectedIssue, DetectorError, PackageType,
+    detectors::utils::{get_binary_paragraphs, get_source_paragraph},
+};
 use std::collections::HashMap;
-
 const DETECTOR_NAME: &str = "binary-control-field-duplicates-source";
 
 fn run(files: &DebianFiles) -> Result<Vec<DetectedIssue>, DetectorError> {
@@ -14,25 +16,27 @@ fn run(files: &DebianFiles) -> Result<Vec<DetectedIssue>, DetectorError> {
     };
 
     let mut issues = Vec::new();
-    let mut paragraphs = control.content.paragraphs();
 
     // Get source paragraph fields using items() for key-value pairs
-    let source_fields: HashMap<String, String> = match paragraphs.next() {
-        Some(source) => source.items().collect(),
-        None => return Ok(issues),
+    let source_fields: HashMap<String, String> = match get_source_paragraph(control.content) {
+        None => {
+            return Ok(vec![]);
+        }
+        Some(paragraph) => paragraph
+            .keys()
+            .map(|k| (k.to_string(), paragraph.get(&k).unwrap_or_default()))
+            .collect(),
     };
 
+    let binaries = get_binary_paragraphs(control.content);
     // Check binary paragraphs
-    for paragraph in paragraphs {
-        let package_name = paragraph
-            .get("Package")
-            .unwrap_or_else(|| "unknown".to_string());
-
+    for binary in binaries {
+        let package_name = binary.get("Package");
         // Use entries() to get line numbers directly
-        for entry in paragraph.entries() {
-            let value = entry.value(); // value() returns String, not Option
+        for entry in binary.entries() {
             if let Some(key) = entry.key()
                 && let Some(source_value) = source_fields.get(&key.to_string())
+                && let value = entry.value()
                 && source_value == &value
             {
                 let line_number = entry.line() + 1; // 1-indexed
@@ -42,10 +46,13 @@ fn run(files: &DebianFiles) -> Result<Vec<DetectedIssue>, DetectorError> {
                     description: format!(
                         "Field '{}' in binary package '{}' duplicates source paragraph value '{}'",
                         key,
-                        package_name,
+                        package_name
+                            .as_ref()
+                            .cloned()
+                            .unwrap_or_else(|| "unknown".to_string()),
                         value.trim()
                     ),
-                    package: Some(package_name.clone()),
+                    package: package_name.clone(),
                     package_type: PackageType::Binary,
                     line: Some(line_number),
                     field: Some(key.to_string()),
@@ -59,7 +66,6 @@ fn run(files: &DebianFiles) -> Result<Vec<DetectedIssue>, DetectorError> {
 }
 
 declare_detector! {
-
     tags: ["installable-field-mirrors-source"],
     detect: run
 }

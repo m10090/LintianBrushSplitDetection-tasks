@@ -3,11 +3,12 @@
 //! Detects fields where the casing doesn't match the canonical Debian field names,
 //! e.g., "HomePage" instead of "Homepage".
 
-use crate::{ DebianFiles, DetectedIssue, DetectorError, PackageType};
+use crate::{
+    DebianFiles, DetectedIssue, DetectorError, detectors::utils::get_package_type,
+};
 use std::collections::HashSet;
 
 const DETECTOR_NAME: &str = "field-name-typo-in-control";
-
 /// Known valid source field names in debian/control
 const KNOWN_SOURCE_FIELDS: &[&str] = &[
     "Source",
@@ -83,13 +84,11 @@ fn find_case_mismatch<'a>(field: &str, valid_fields: &HashSet<&'a str>) -> Optio
 
     // Look for case-insensitive match
     let field_lower = field.to_lowercase();
-    for &valid_field in valid_fields {
-        if valid_field.to_lowercase() == field_lower {
-            return Some(valid_field);
-        }
-    }
-
-    None
+    valid_fields
+        .iter()
+        .find(|&&valid_field| valid_field.to_lowercase() == field_lower)
+        .copied()
+        .map(|v| v as _)
 }
 
 fn run(files: &DebianFiles) -> Result<Vec<DetectedIssue>, DetectorError> {
@@ -99,43 +98,36 @@ fn run(files: &DebianFiles) -> Result<Vec<DetectedIssue>, DetectorError> {
 
     let mut issues = Vec::new();
     let valid_fields = get_valid_fields();
-    let mut is_first_paragraph = true;
 
     for paragraph in control.content.paragraphs() {
         let package_name = paragraph.get("Package");
-        let package_type = if is_first_paragraph {
-            PackageType::Source
-        } else {
-            PackageType::Binary
-        };
+        let package_type = get_package_type(&paragraph);
 
         for entry in paragraph.entries() {
-            if let Some(key) = entry.key() {
-                if let Some(correct_field) = find_case_mismatch(&key, &valid_fields) {
-                    let line_number = entry.line() + 1;
+            if let Some(key) = entry.key()
+                && let Some(correct_field) = find_case_mismatch(&key, &valid_fields)
+            {
+                let line_number = entry.line() + 1;
 
-                    let description = format!(
-                        "Field '{}' has incorrect casing, should be '{}' [{}:{}]",
-                        key,
-                        correct_field,
-                        control.path.display(),
-                        line_number
-                    );
+                let description = format!(
+                    "Field '{}' has incorrect casing, should be '{}' [{}:{}]",
+                    key,
+                    correct_field,
+                    control.path.display(),
+                    line_number
+                );
 
-                    issues.push(DetectedIssue {
-                        tag: "cute-field".to_string(),
-                        description,
-                        package: package_name.clone(),
-                        package_type: package_type.clone(),
-                        line: Some(line_number),
-                        field: Some(key.to_string()),
-                        detector_name: DETECTOR_NAME
-                    });
-                }
+                issues.push(DetectedIssue {
+                    tag: "cute-field".to_string(),
+                    description,
+                    package: package_name.clone(),
+                    package_type: package_type.clone(),
+                    line: Some(line_number),
+                    field: Some(key.to_string()),
+                    detector_name: DETECTOR_NAME,
+                });
             }
         }
-
-        is_first_paragraph = false;
     }
 
     Ok(issues)
@@ -148,6 +140,7 @@ declare_detector! {
 
 #[cfg(test)]
 mod tests {
+    use crate::PackageType;
     use super::*;
     use crate::{Detector, load_debian_files};
     use std::fs;
