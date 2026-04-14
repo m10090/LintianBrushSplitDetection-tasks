@@ -5,6 +5,8 @@
 
 use crate::{DebianFiles, DetectedIssue, DetectorError, PackageType};
 
+const DETECTOR_NAME: &str = "debian-control-has-empty-field";
+
 fn run(files: &DebianFiles) -> Result<Vec<DetectedIssue>, DetectorError> {
     let Some(control) = &files.control else {
         return Ok(vec![]);
@@ -51,6 +53,7 @@ fn run(files: &DebianFiles) -> Result<Vec<DetectedIssue>, DetectorError> {
                         package_type: package_type.clone(),
                         line: Some(line_number),
                         field: Some(key.to_string()),
+                        detector_name: DETECTOR_NAME
                     });
                 }
             }
@@ -63,7 +66,6 @@ fn run(files: &DebianFiles) -> Result<Vec<DetectedIssue>, DetectorError> {
 }
 
 declare_detector! {
-    name: "debian-control-has-empty-field",
     tags: ["debian-control-has-empty-field"],
     detect: run
 }
@@ -71,7 +73,7 @@ declare_detector! {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{load_debian_files, Detector};
+    use crate::{Detector, load_debian_files};
     use std::fs;
     use tempfile::TempDir;
 

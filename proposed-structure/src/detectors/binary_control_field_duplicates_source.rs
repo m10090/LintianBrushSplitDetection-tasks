@@ -6,6 +6,8 @@
 use crate::{DebianFiles, DetectedIssue, DetectorError, PackageType};
 use std::collections::HashMap;
 
+const DETECTOR_NAME: &str = "binary-control-field-duplicates-source";
+
 fn run(files: &DebianFiles) -> Result<Vec<DetectedIssue>, DetectorError> {
     let Some(control) = &files.control else {
         return Ok(vec![]);
@@ -47,6 +49,7 @@ fn run(files: &DebianFiles) -> Result<Vec<DetectedIssue>, DetectorError> {
                     package_type: PackageType::Binary,
                     line: Some(line_number),
                     field: Some(key.to_string()),
+                    detector_name: DETECTOR_NAME,
                 });
             }
         }
@@ -56,7 +59,7 @@ fn run(files: &DebianFiles) -> Result<Vec<DetectedIssue>, DetectorError> {
 }
 
 declare_detector! {
-    name: "binary-control-field-duplicates-source",
+
     tags: ["installable-field-mirrors-source"],
     detect: run
 }

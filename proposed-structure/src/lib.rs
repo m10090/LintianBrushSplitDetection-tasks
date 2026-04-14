@@ -137,6 +137,8 @@ pub struct DetectedIssue {
     pub line: Option<usize>,
     /// The field name involved (if applicable)
     pub field: Option<String>,
+    /// Detector's name that found the issue
+    pub detector_name: &'static str,
 }
 
 /// Type of package where the issue was found
@@ -232,7 +234,7 @@ lazy_static! {
         }
         map
     };
-    static ref TAG_TO_FIXERS: HashMap<&'static str, Vec<&'static str>> = {
+    static ref TAG_TO_FIXERS_NAME: HashMap<&'static str, Vec<&'static str>> = {
         let mut map: HashMap<&'static str, Vec<&'static str>> = HashMap::new();
         for reg in inventory::iter::<FixerRegistration> {
             map.entry(reg.lintian_tag).or_default().push(reg.name);
@@ -243,14 +245,23 @@ lazy_static! {
         }
         map
     };
+    static ref DETECTORS: HashMap<&'static str, &'static dyn Detector> = {
+        let mut map = HashMap::new();
+        for reg in inventory::iter::<DetectorRegistration> {
+            let detectors = (reg.create)();
+            let detectors: &'static dyn Detector = Box::leak(detectors);
+            debug_assert!(!map.contains_key(reg.name), "Duplicate detector name found");
+            map.insert(reg.name, detectors);
+        }
+        map
+    };
 }
 
 /// Get all registered detectors
-pub fn get_detectors() -> Vec<Box<dyn Detector>> {
-    inventory::iter::<DetectorRegistration>
-        .into_iter()
-        .map(|reg| (reg.create)())
-        .collect()
+pub fn get_detectors() -> Vec<&'static dyn Detector> {
+    let mut dets: Vec<_> = DETECTORS.values().copied().collect();
+    dets.sort_unstable_by_key(|d| d.name());
+    dets
 }
 
 /// Get all registered fixers
@@ -263,7 +274,7 @@ pub fn get_fixers() -> Vec<Box<dyn Fixer>> {
 
 /// Get fixer names that can handle a lintian tag
 pub fn get_fixer_names_for_tag(tag: &str) -> Vec<&'static str> {
-    TAG_TO_FIXERS.get(tag).cloned().unwrap_or_default()
+    TAG_TO_FIXERS_NAME.get(tag).cloned().unwrap_or_default()
 }
 
 /// Construct a fixer by name
@@ -423,6 +434,7 @@ Description: Test package
             package_type: PackageType::Source,
             line: Some(3),
             field: Some("HomePage".to_string()),
+            detector_name: "field-name-typo-in-control"
         }];
 
         let fixed = fix_all(temp_dir.path(), &issues).unwrap();

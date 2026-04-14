@@ -89,6 +89,7 @@ mod tests {
             package_type: PackageType::Binary,
             line: Some(5),
             field: Some("Priority".to_string()),
+            detector_name: "test-detector",
         }];
 
         let mut files = load_debian_files_mut(temp_dir.path()).unwrap();

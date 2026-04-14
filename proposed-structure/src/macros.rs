@@ -7,10 +7,16 @@
 /// This macro generates a detector struct that implements the Detector trait
 /// and registers it with the inventory for automatic discovery.
 ///
+/// # Note
+///
+/// The module calling this macro MUST define a constant:
+/// `const DETECTOR_NAME: &str = "...";` before invoking the macro.
+///
 /// # Example
 /// ```ignore
+/// const DETECTOR_NAME: &str = "my-detector";
+///
 /// declare_detector! {
-///     name: "my-detector",
 ///     tags: ["my-lintian-tag"],
 ///     detect: |files| {
 ///         // Detection logic here - files is &DebianFiles
@@ -21,7 +27,6 @@
 #[macro_export]
 macro_rules! declare_detector {
     (
-        name: $name:expr,
         tags: [$($tag:expr),*],
         detect: $detect_fn:expr
     ) => {
@@ -29,7 +34,7 @@ macro_rules! declare_detector {
 
         impl $crate::Detector for DetectorImpl {
             fn name(&self) -> &'static str {
-                $name
+                DETECTOR_NAME
             }
 
             fn tags(&self) -> &'static [&'static str] {
@@ -53,7 +58,7 @@ macro_rules! declare_detector {
 
         inventory::submit! {
             $crate::DetectorRegistration {
-                name: $name,
+                name: DETECTOR_NAME,
                 lintian_tags: &[$($tag),*],
                 create: || Box::new(DetectorImpl),
             }

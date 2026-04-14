@@ -92,6 +92,7 @@ mod tests {
             package_type: PackageType::Source,
             line: Some(2),
             field: Some("Build-Depends".to_string()),
+            detector_name: "test-detector",
         }];
 
         let mut files = load_debian_files_mut(temp_dir.path()).unwrap();
