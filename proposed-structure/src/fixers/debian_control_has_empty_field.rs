@@ -1,7 +1,7 @@
 //! Fixer for empty fields in debian/control
 
 use crate::{
-    DebianFilesMut, DetectedIssue, FixerError, PackageType, fixers::utils::get_pargraph_by_package,
+    DebianFilesMut, DetectedIssue, FixerError, PackageType, fixers::utils::get_paragraph_by_package,
 };
 
 
@@ -41,7 +41,7 @@ fn run(issues: &[DetectedIssue], files: &mut DebianFilesMut) -> Result<usize, Fi
             // should report this as implementation error
             continue;
         };
-        let Some(mut paragraph) = get_pargraph_by_package(package, editor.as_mut_deb822()) else {
+        let Some(mut paragraph) = get_paragraph_by_package(package, editor.as_mut_deb822()) else {
             continue;
         };
         paragraph.remove(field);

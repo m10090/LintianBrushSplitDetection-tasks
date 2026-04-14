@@ -1,7 +1,7 @@
 //! Fixer for unusual field spacing in debian/control
 
 use crate::{
-    DebianFilesMut, DetectedIssue, FixerError, PackageType, fixers::utils::get_pargraph_by_package,
+    DebianFilesMut, DetectedIssue, FixerError, PackageType, fixers::utils::get_paragraph_by_package,
 };
 
 fn run(issues: &[DetectedIssue], files: &mut DebianFilesMut) -> Result<usize, FixerError> {
@@ -22,7 +22,7 @@ fn run(issues: &[DetectedIssue], files: &mut DebianFilesMut) -> Result<usize, Fi
         let paragraph = if package_type == &PackageType::Source {
             editor.source().map(|s| s.as_deb822().clone())
         } else if let Some(package) = package {
-            get_pargraph_by_package(package.as_str(), editor.as_mut_deb822())
+            get_paragraph_by_package(package.as_str(), editor.as_mut_deb822())
         } else {
             // should report this as implementation error
             continue;

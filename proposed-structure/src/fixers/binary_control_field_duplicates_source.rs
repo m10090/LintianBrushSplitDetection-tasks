@@ -1,6 +1,6 @@
 //! Fixer for duplicated source fields in binary paragraphs
 
-use crate::{DebianFilesMut, DetectedIssue, FixerError, fixers::utils::get_pargraph_by_package};
+use crate::{DebianFilesMut, DetectedIssue, FixerError, fixers::utils::get_paragraph_by_package};
 
 fn run(issues: &[DetectedIssue], files: &mut DebianFilesMut) -> Result<usize, FixerError> {
     let Some(control) = files.control.as_mut() else {
@@ -16,7 +16,7 @@ fn run(issues: &[DetectedIssue], files: &mut DebianFilesMut) -> Result<usize, Fi
             // should report this as implementation error
             continue;
         };
-        let Some(mut paragraph) = get_pargraph_by_package(package, control) else {
+        let Some(mut paragraph) = get_paragraph_by_package(package, control) else {
             continue;
         };
         let Some(field) = field else {

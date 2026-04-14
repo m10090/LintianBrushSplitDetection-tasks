@@ -3,6 +3,7 @@
 //! Detects fields that have empty or whitespace-only values in both
 //! source and binary package paragraphs.
 
+use super::utils::get_package_type;
 use crate::{DebianFiles, DetectedIssue, DetectorError, PackageType};
 
 fn run(files: &DebianFiles) -> Result<Vec<DetectedIssue>, DetectorError> {
@@ -11,52 +12,41 @@ fn run(files: &DebianFiles) -> Result<Vec<DetectedIssue>, DetectorError> {
     };
 
     let mut issues = Vec::new();
-    let mut is_first_paragraph = true;
 
     for paragraph in control.content.paragraphs() {
         let package_name = paragraph.get("Package");
-        let package_type = if is_first_paragraph {
-            PackageType::Source
-        } else {
-            PackageType::Binary
-        };
+        let package_type = get_package_type(&paragraph);
 
         for entry in paragraph.entries() {
-            if let Some(key) = entry.key() {
-                let value = entry.value();
-                if value.trim().is_empty() {
-                    let line_number = entry.line() + 1;
+            if let Some(key) = entry.key()
+                && let value = entry.value()
+                && value.trim().is_empty()
+            {
+                let line_number = entry.line() + 1;
 
-                    let description = if is_first_paragraph {
-                        format!(
-                            "Empty field '{}' in source paragraph [{}:{}]",
-                            key,
-                            control.path.display(),
-                            line_number
-                        )
+                let description = format!(
+                    "Empty field '{}' in {} package '{}' [{}:{}]",
+                    key,
+                    if package_type == PackageType::Source {
+                        "source"
                     } else {
-                        format!(
-                            "Empty field '{}' in binary package '{}' [{}:{}]",
-                            key,
-                            package_name.as_deref().unwrap_or("unknown"),
-                            control.path.display(),
-                            line_number
-                        )
-                    };
+                        "binary"
+                    },
+                    package_name.as_deref().unwrap_or("unknown"),
+                    control.path.display(),
+                    line_number
+                );
 
-                    issues.push(DetectedIssue {
-                        tag: "debian-control-has-empty-field".to_string(),
-                        description,
-                        package: package_name.clone(),
-                        package_type: package_type.clone(),
-                        line: Some(line_number),
-                        field: Some(key.to_string()),
-                    });
-                }
+                issues.push(DetectedIssue {
+                    tag: "debian-control-has-empty-field".to_string(),
+                    description,
+                    package: package_name.clone(),
+                    package_type: package_type.clone(),
+                    line: Some(line_number),
+                    field: Some(key.to_string()),
+                });
             }
         }
-
-        is_first_paragraph = false;
     }
 
     Ok(issues)
@@ -71,7 +61,7 @@ declare_detector! {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{load_debian_files, Detector};
+    use crate::{Detector, load_debian_files};
     use std::fs;
     use tempfile::TempDir;
 

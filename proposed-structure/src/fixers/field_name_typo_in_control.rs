@@ -1,6 +1,6 @@
 //! Fixer for field name casing typos in debian/control
 
-use crate::{DebianFilesMut, DetectedIssue, FixerError, PackageType, fixers::utils::get_pargraph_by_package};
+use crate::{DebianFilesMut, DetectedIssue, FixerError, PackageType, fixers::utils::get_paragraph_by_package};
 use std::collections::HashSet;
 
 const KNOWN_SOURCE_FIELDS: &[&str] = &[
@@ -123,7 +123,7 @@ fn run(issues: &[DetectedIssue], files: &mut DebianFilesMut) -> Result<usize, Fi
             // should report this as implementation error
             continue;
         };
-        let Some(mut paragraph) = get_pargraph_by_package(package, editor.as_mut_deb822()) else {
+        let Some(mut paragraph) = get_paragraph_by_package(package, editor.as_mut_deb822()) else {
             continue;
         };
         paragraph.rename(&field, correct_field);

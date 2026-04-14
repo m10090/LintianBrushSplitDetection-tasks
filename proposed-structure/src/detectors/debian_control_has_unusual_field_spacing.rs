@@ -6,7 +6,7 @@
 //! Uses the deb822-lossless `normalize_field_spacing()` method to detect
 //! fields that would need spacing normalization.
 
-use crate::{DebianFiles, DetectedIssue, DetectorError, PackageType};
+use crate::{DebianFiles, DetectedIssue, DetectorError, detectors::utils::get_package_type};
 
 fn run(files: &DebianFiles) -> Result<Vec<DetectedIssue>, DetectorError> {
     let Some(control) = &files.control else {
@@ -14,18 +14,11 @@ fn run(files: &DebianFiles) -> Result<Vec<DetectedIssue>, DetectorError> {
     };
 
     let mut issues = Vec::new();
-    let mut is_first_paragraph = true;
 
     for paragraph in control.content.paragraphs() {
         let package_name = paragraph.get("Package");
-        let package_type = if is_first_paragraph {
-            PackageType::Source
-        } else {
-            PackageType::Binary
-        };
+        let package_type = get_package_type(&paragraph);
 
-        // Collect entries first to avoid iterator invalidation when calling
-        // normalize_field_spacing() which modifies the underlying structure
         let entries: Vec<_> = paragraph.entries().collect();
 
         // Check each entry for unusual spacing
@@ -54,8 +47,6 @@ fn run(files: &DebianFiles) -> Result<Vec<DetectedIssue>, DetectorError> {
                 }
             }
         }
-
-        is_first_paragraph = false;
     }
 
     Ok(issues)
@@ -70,7 +61,8 @@ declare_detector! {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{load_debian_files, Detector};
+    use crate::PackageType;
+    use crate::{Detector, load_debian_files};
     use std::fs;
     use tempfile::TempDir;
 
