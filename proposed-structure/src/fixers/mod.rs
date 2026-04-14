@@ -4,6 +4,7 @@ pub mod binary_control_field_duplicates_source;
 pub mod debian_control_has_empty_field;
 pub mod debian_control_has_unusual_field_spacing;
 pub mod field_name_typo_in_control;
+mod utils;
 
 pub use binary_control_field_duplicates_source::FixerImpl as BinaryControlFieldDuplicatesSourceFixer;
 pub use debian_control_has_empty_field::FixerImpl as DebianControlHasEmptyFieldFixer;

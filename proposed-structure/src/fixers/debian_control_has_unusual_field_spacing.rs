@@ -1,6 +1,8 @@
 //! Fixer for unusual field spacing in debian/control
 
-use crate::{DebianFilesMut, DetectedIssue, FixerError};
+use crate::{
+    DebianFilesMut, DetectedIssue, FixerError, PackageType, fixers::utils::get_pargraph_by_package,
+};
 
 fn run(issues: &[DetectedIssue], files: &mut DebianFilesMut) -> Result<usize, FixerError> {
     let Some(control) = files.control.as_mut() else {
@@ -10,49 +12,38 @@ fn run(issues: &[DetectedIssue], files: &mut DebianFilesMut) -> Result<usize, Fi
     let editor = &mut control.editor;
     let mut fixed = 0usize;
 
-    if let Some(mut source) = editor.source() {
-        let entries: Vec<_> = source.as_mut_deb822().entries().collect();
-        for mut entry in entries {
-            if let Some(key) = entry.key() {
-                let line = entry.line() + 1;
-                let should_fix = issues.iter().any(|issue| {
-                    issue.tag == "debian-control-has-unusual-field-spacing"
-                        && issue.package.is_none()
-                        && issue
-                            .field
-                            .as_deref()
-                            .is_some_and(|f| f.eq_ignore_ascii_case(&key))
-                        && issue.line.is_none_or(|l| l == line)
-                });
+    for DetectedIssue {
+        field,
+        package_type,
+        package,
+        ..
+    } in issues
+    {
+        let paragraph = if package_type == &PackageType::Source {
+            editor.source().map(|s| s.as_deb822().clone())
+        } else if let Some(package) = package {
+            get_pargraph_by_package(package.as_str(), editor.as_mut_deb822())
+        } else {
+            // should report this as implementation error
+            continue;
+        };
 
-                if should_fix && entry.normalize_field_spacing() {
-                    fixed += 1;
-                }
-            }
-        }
-    }
+        let Some(paragraph) = paragraph else {
+            // should report this as implementation error
+            continue;
+        };
 
-    for mut binary in editor.binaries() {
-        let package_name = binary.name();
-        let entries: Vec<_> = binary.as_mut_deb822().entries().collect();
-        for mut entry in entries {
-            if let Some(key) = entry.key() {
-                let line = entry.line() + 1;
-                let should_fix = issues.iter().any(|issue| {
-                    issue.tag == "debian-control-has-unusual-field-spacing"
-                        && issue.package.as_deref() == package_name.as_deref()
-                        && issue
-                            .field
-                            .as_deref()
-                            .is_some_and(|f| f.eq_ignore_ascii_case(&key))
-                        && issue.line.is_none_or(|l| l == line)
-                });
+        let Some(field) = field else {
+            // should report this as implementation error
+            continue;
+        };
 
-                if should_fix && entry.normalize_field_spacing() {
-                    fixed += 1;
-                }
-            }
-        }
+        let Some(mut entry) = paragraph.get_entry(field.as_str()) else {
+            // should report this as implementation error
+            continue;
+        };
+        entry.normalize_field_spacing();
+        fixed += 1;
     }
 
     Ok(fixed)
@@ -68,7 +59,7 @@ declare_fixer! {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{load_debian_files_mut, Fixer, PackageType};
+    use crate::{Fixer, PackageType, load_debian_files_mut};
     use std::fs;
     use tempfile::TempDir;
 

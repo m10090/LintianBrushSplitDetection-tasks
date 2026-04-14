@@ -1,7 +1,6 @@
 //! Fixer for duplicated source fields in binary paragraphs
 
-use crate::{DebianFilesMut, DetectedIssue, FixerError};
-use std::collections::HashMap;
+use crate::{DebianFilesMut, DetectedIssue, FixerError, fixers::utils::get_pargraph_by_package};
 
 fn run(issues: &[DetectedIssue], files: &mut DebianFilesMut) -> Result<usize, FixerError> {
     let Some(control) = files.control.as_mut() else {
@@ -9,47 +8,23 @@ fn run(issues: &[DetectedIssue], files: &mut DebianFilesMut) -> Result<usize, Fi
     };
 
     let editor = &mut control.editor;
-    let Some(source) = editor.source() else {
-        return Ok(0);
-    };
-
-    let source_fields: HashMap<String, String> = source.as_deb822().items().collect();
-    let mut fixed = 0usize;
-
-    for mut binary in editor.binaries() {
-        let package_name = binary.name().unwrap_or_else(|| "unknown".to_string());
-        let paragraph = binary.as_mut_deb822();
-        let entries: Vec<_> = paragraph.entries().collect();
-        let mut remove_keys: Vec<String> = Vec::new();
-
-        for entry in entries {
-            if let Some(key) = entry.key() {
-                let value = entry.value();
-                let line = entry.line() + 1;
-                let matches_issue = issues.iter().any(|issue| {
-                    issue.tag == "installable-field-mirrors-source"
-                        && issue.package.as_deref() == Some(package_name.as_str())
-                        && issue
-                            .field
-                            .as_deref()
-                            .is_some_and(|f| f.eq_ignore_ascii_case(&key))
-                        && issue.line.is_none_or(|l| l == line)
-                });
-
-                if matches_issue
-                    && source_fields
-                        .get(&key)
-                        .is_some_and(|source_value| source_value == &value)
-                {
-                    remove_keys.push(key);
-                    fixed += 1;
-                }
-            }
-        }
-
-        for key in remove_keys {
-            paragraph.remove(&key);
-        }
+    let control = editor.as_mut_deb822();
+    let mut fixed = 0;
+    // get the fileds needed
+    for DetectedIssue { package, field, .. } in issues {
+        let Some(package) = package else {
+            // should report this as implementation error
+            continue;
+        };
+        let Some(mut paragraph) = get_pargraph_by_package(package, control) else {
+            continue;
+        };
+        let Some(field) = field else {
+            // should report this as implementation error
+            continue;
+        };
+        paragraph.remove(field);
+        fixed += 1;
     }
 
     Ok(fixed)
@@ -65,7 +40,7 @@ declare_fixer! {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{load_debian_files_mut, Fixer, PackageType};
+    use crate::{Fixer, PackageType, load_debian_files_mut};
     use std::fs;
     use tempfile::TempDir;
 

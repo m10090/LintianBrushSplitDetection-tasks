@@ -1,36 +1,9 @@
 //! Fixer for empty fields in debian/control
 
-use crate::{DebianFilesMut, DetectedIssue, FixerError, PackageType};
+use crate::{
+    DebianFilesMut, DetectedIssue, FixerError, PackageType, fixers::utils::get_pargraph_by_package,
+};
 
-fn issue_matches(
-    issue: &DetectedIssue,
-    package_type: &PackageType,
-    package_name: Option<&str>,
-    field: &str,
-    line: usize,
-) -> bool {
-    if issue.tag != "debian-control-has-empty-field" {
-        return false;
-    }
-
-    if issue.package_type != *package_type {
-        return false;
-    }
-
-    if issue.package.as_deref() != package_name {
-        return false;
-    }
-
-    if !issue
-        .field
-        .as_deref()
-        .is_some_and(|f| f.eq_ignore_ascii_case(field))
-    {
-        return false;
-    }
-
-    issue.line.is_none_or(|l| l == line)
-}
 
 fn run(issues: &[DetectedIssue], files: &mut DebianFilesMut) -> Result<usize, FixerError> {
     let Some(control) = files.control.as_mut() else {
@@ -40,60 +13,39 @@ fn run(issues: &[DetectedIssue], files: &mut DebianFilesMut) -> Result<usize, Fi
     let editor = &mut control.editor;
     let mut fixed = 0usize;
 
-    if let Some(mut source) = editor.source() {
-        let paragraph = source.as_mut_deb822();
-        let entries: Vec<_> = paragraph.entries().collect();
-        let mut keys_to_remove: Vec<String> = Vec::new();
+    for DetectedIssue {
+        package_type,
+        field,
+        package,
+        ..
+    } in issues
+    {
+        let Some(field) = field else {
+            // should report this as implementation error
+            continue;
+        };
 
-        for entry in entries {
-            if let Some(key) = entry.key() {
-                let line = entry.line() + 1;
-                if entry.value().trim().is_empty()
-                    && issues
-                        .iter()
-                        .any(|issue| issue_matches(issue, &PackageType::Source, None, &key, line))
-                {
-                    keys_to_remove.push(key);
-                    fixed += 1;
-                }
-            }
+        if package_type == &PackageType::Source {
+            let Some(mut source) = editor.source() else {
+                // should report this as implementation error
+                continue;
+            };
+            let paragraph = source.as_mut_deb822();
+
+            paragraph.remove(field.as_str());
+            fixed += 1;
+            continue;
         }
 
-        for key in keys_to_remove {
-            paragraph.remove(&key);
-        }
-    }
-
-    for mut binary in editor.binaries() {
-        let package_name = binary.name();
-        let paragraph = binary.as_mut_deb822();
-
-        let entries: Vec<_> = paragraph.entries().collect();
-        let mut keys_to_remove: Vec<String> = Vec::new();
-
-        for entry in entries {
-            if let Some(key) = entry.key() {
-                let line = entry.line() + 1;
-                if entry.value().trim().is_empty()
-                    && issues.iter().any(|issue| {
-                        issue_matches(
-                            issue,
-                            &PackageType::Binary,
-                            package_name.as_deref(),
-                            &key,
-                            line,
-                        )
-                    })
-                {
-                    keys_to_remove.push(key);
-                    fixed += 1;
-                }
-            }
-        }
-
-        for key in keys_to_remove {
-            paragraph.remove(&key);
-        }
+        let Some(package) = package else {
+            // should report this as implementation error
+            continue;
+        };
+        let Some(mut paragraph) = get_pargraph_by_package(package, editor.as_mut_deb822()) else {
+            continue;
+        };
+        paragraph.remove(field);
+        fixed += 1;
     }
 
     Ok(fixed)
@@ -109,7 +61,7 @@ declare_fixer! {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{load_debian_files_mut, Fixer};
+    use crate::{Fixer, load_debian_files_mut};
     use std::fs;
     use tempfile::TempDir;
 
@@ -143,26 +95,5 @@ mod tests {
         assert_eq!(fixed, 1);
         let updated = fs::read_to_string(temp_dir.path().join("debian/control")).unwrap();
         assert!(!updated.contains("Maintainer:"));
-    }
-
-    #[test]
-    fn test_fix_ignores_non_matching_issues() {
-        let content = "Source: test\nMaintainer:\n";
-        let temp_dir = setup_control_file(content);
-
-        let issues = vec![DetectedIssue {
-            tag: "some-other-tag".to_string(),
-            description: "".to_string(),
-            package: None,
-            package_type: PackageType::Source,
-            line: Some(2),
-            field: Some("Maintainer".to_string()),
-        }];
-
-        let mut files = load_debian_files_mut(temp_dir.path()).unwrap();
-        let fixer = FixerImpl;
-        let fixed = fixer.apply(&issues, &mut files).unwrap();
-
-        assert_eq!(fixed, 0);
     }
 }

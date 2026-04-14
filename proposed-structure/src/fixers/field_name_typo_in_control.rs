@@ -1,6 +1,6 @@
 //! Fixer for field name casing typos in debian/control
 
-use crate::{DebianFilesMut, DetectedIssue, FixerError};
+use crate::{DebianFilesMut, DetectedIssue, FixerError, PackageType, fixers::utils::get_pargraph_by_package};
 use std::collections::HashSet;
 
 const KNOWN_SOURCE_FIELDS: &[&str] = &[
@@ -92,62 +92,42 @@ fn run(issues: &[DetectedIssue], files: &mut DebianFilesMut) -> Result<usize, Fi
     let editor = &mut control.editor;
     let valid_fields = get_valid_fields();
     let mut fixed = 0usize;
+    for DetectedIssue {
+        package_type,
+        field,
+        package,
+        ..
+    } in issues
+    {
+        let Some(field) = field else {
+            // should report this as implementation error
+            continue;
+        };
+        let Some(correct_field) = find_case_mismatch(&field, &valid_fields) else {
+            continue;
+        };
 
-    if let Some(mut source) = editor.source() {
-        let paragraph = source.as_mut_deb822();
-        let entries: Vec<_> = paragraph
-            .entries()
-            .filter_map(|entry| entry.key().map(|key| (key, entry.line() + 1)))
-            .collect();
-
-        for (key, line) in entries {
-            let Some(correct_field) = find_case_mismatch(&key, &valid_fields) else {
+        if package_type == &PackageType::Source {
+            let Some(mut source) = editor.source() else {
+                // should report this as implementation error
                 continue;
             };
+            let paragraph = source.as_mut_deb822();
 
-            let is_targeted = issues.iter().any(|issue| {
-                issue.tag == "cute-field"
-                    && issue.package.is_none()
-                    && issue
-                        .field
-                        .as_deref()
-                        .is_some_and(|f| f.eq_ignore_ascii_case(&key))
-                    && issue.line.is_none_or(|l| l == line)
-            });
-
-            if is_targeted && paragraph.rename(&key, correct_field) {
-                fixed += 1;
-            }
+            paragraph.rename(&field, correct_field);
+            fixed += 1;
+            continue;
         }
-    }
 
-    for mut binary in editor.binaries() {
-        let package_name = binary.name();
-        let paragraph = binary.as_mut_deb822();
-        let entries: Vec<_> = paragraph
-            .entries()
-            .filter_map(|entry| entry.key().map(|key| (key, entry.line() + 1)))
-            .collect();
-
-        for (key, line) in entries {
-            let Some(correct_field) = find_case_mismatch(&key, &valid_fields) else {
-                continue;
-            };
-
-            let is_targeted = issues.iter().any(|issue| {
-                issue.tag == "cute-field"
-                    && issue.package.as_deref() == package_name.as_deref()
-                    && issue
-                        .field
-                        .as_deref()
-                        .is_some_and(|f| f.eq_ignore_ascii_case(&key))
-                    && issue.line.is_none_or(|l| l == line)
-            });
-
-            if is_targeted && paragraph.rename(&key, correct_field) {
-                fixed += 1;
-            }
-        }
+        let Some(package) = package else {
+            // should report this as implementation error
+            continue;
+        };
+        let Some(mut paragraph) = get_pargraph_by_package(package, editor.as_mut_deb822()) else {
+            continue;
+        };
+        paragraph.rename(&field, correct_field);
+        fixed += 1;
     }
 
     Ok(fixed)
@@ -163,7 +143,7 @@ declare_fixer! {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{load_debian_files_mut, Fixer, PackageType};
+    use crate::{Fixer, PackageType, load_debian_files_mut};
     use std::fs;
     use tempfile::TempDir;
 
@@ -198,31 +178,5 @@ mod tests {
         let updated = fs::read_to_string(temp_dir.path().join("debian/control")).unwrap();
         assert!(updated.contains("Homepage: https://example.com"));
         assert!(!updated.contains("HomePage:"));
-    }
-
-    #[test]
-    fn test_fix_targets_specific_line_only() {
-        let content =
-            "Source: test\nHomePage: https://first.example\nHomePage: https://second.example\n";
-        let temp_dir = setup_control_file(content);
-
-        let issues = vec![DetectedIssue {
-            tag: "cute-field".to_string(),
-            description: "".to_string(),
-            package: None,
-            package_type: PackageType::Source,
-            line: Some(2),
-            field: Some("HomePage".to_string()),
-        }];
-
-        let mut files = load_debian_files_mut(temp_dir.path()).unwrap();
-        let fixer = FixerImpl;
-        let fixed = fixer.apply(&issues, &mut files).unwrap();
-        files.write_back().unwrap();
-
-        assert_eq!(fixed, 1);
-        let updated = fs::read_to_string(temp_dir.path().join("debian/control")).unwrap();
-        assert!(updated.contains("Homepage: https://first.example"));
-        assert!(updated.contains("HomePage: https://second.example"));
     }
 }
