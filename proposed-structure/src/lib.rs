@@ -9,10 +9,8 @@ mod macros;
 pub mod detectors;
 
 use deb822_lossless::Deb822;
-use debian_analyzer::control::TemplatedControlEditor;
-use debian_analyzer::editor::EditorError;
 use lazy_static::lazy_static;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
@@ -117,17 +115,6 @@ pub enum DetectorError {
     IoError(#[from] std::io::Error),
 }
 
-/// Errors that can occur during fixing
-#[derive(Error, Debug)]
-pub enum FixerError {
-    #[error("Failed to parse control file: {0}")]
-    ParseError(String),
-    #[error("Control editor error: {0}")]
-    EditorError(#[from] EditorError),
-    #[error("IO error: {0}")]
-    IoError(#[from] std::io::Error),
-}
-
 /// Trait for all detectors
 pub trait Detector: Send + Sync {
     /// Detect issues in the provided Debian files
@@ -176,22 +163,59 @@ pub fn get_detectors() -> Vec<&'static dyn Detector> {
 }
 
 /// Run all registered detectors and collect all issues
-pub fn detect_all(
-    base_path: &Path,
-) -> Result<Vec<(DetectedIssue, Option<Box<dyn FnOnce()>>)>, DetectorError> {
+pub fn detect_all(base_path: &Path) -> Result<Vec<DetectedIssue>, DetectorError> {
     // TODO: add the topological sort
     let loaded = load_debian_files(base_path)?;
     let files = loaded.as_ref();
 
     let mut all_issues = Vec::new();
     for detector in get_detectors() {
-        let issues = detector.detect(&files)?;
+        let issues = detector.detect(&files)?.into_iter().map(|res| res.0);
         all_issues.extend(issues);
     }
 
     Ok(all_issues)
 }
-
+pub fn apply_fixers(
+    path: PathBuf,
+    issues: &[DetectedIssue],
+    selected: &[&'static str],
+    dry_run: bool,
+) -> Result<usize, DetectorError> {
+    let loaded = load_debian_files(&path)?;
+    let files = loaded.as_ref();
+    // find detector to solve the issue with
+    let mut set: HashSet<&'static str> = HashSet::new();
+    let mut selected_set: HashSet<&'static str> = HashSet::new();
+    for selected_fixer in selected {
+        selected_set.insert(selected_fixer);
+    }
+    for DetectedIssue { detector_name, .. } in issues {
+        set.insert(detector_name);
+    }
+    let mut fixed = 0;
+    for detector_name in selected_set.difference(&set) {
+        let Some(detectors) = DETECTORS.get(detector_name) else {
+            unreachable!()
+        };
+        fixed += detectors
+            .detect(&files)?
+            .into_iter()
+            .fold(0, |acc, (_, fix)| {
+                if let Some(fix) = fix {
+                    // apply
+                    fix();
+                    acc + 1
+                } else {
+                    acc
+                }
+            });
+    }
+    if !dry_run {
+        eprintln!("this mode isn't suppprted now");
+    }
+    Ok(fixed)
+}
 // #[cfg(test)]
 // mod tests {
 // comment out for refactoring

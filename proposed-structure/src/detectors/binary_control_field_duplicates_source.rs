@@ -4,7 +4,7 @@
 //! name and value as the source paragraph, which is redundant.
 
 use crate::{
-    DebianFiles, DetectedIssue, DetectorError ,
+    DebianFiles, DetectedIssue, DetectorError,
     detectors::utils::{get_binary_paragraphs, get_package_type, get_source_paragraph},
 };
 use std::collections::HashMap;
@@ -12,7 +12,7 @@ const DETECTOR_NAME: &str = "binary-control-field-duplicates-source";
 
 fn run(
     files: &DebianFiles,
-) -> Result<Vec<(DetectedIssue, Option<Box<dyn FnOnce() -> ()>>)>, DetectorError> {
+) -> Result<Vec<(DetectedIssue, Option<Box<dyn FnOnce()>>)>, DetectorError> {
     let Some(control) = &files.control else {
         return Ok(vec![]);
     };
@@ -80,4 +80,3 @@ fn run(
 // mod tests {
 //     // Tests are commented out for refactoring
 // }
-

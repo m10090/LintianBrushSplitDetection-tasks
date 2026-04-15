@@ -1,6 +1,6 @@
 use clap::{ArgAction, Parser};
 use proposed_structure::{
-    detect_all, get_fixer_by_name, get_fixer_names_for_tag, load_debian_files_mut,
+    detect_all 
 };
 use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
@@ -126,7 +126,7 @@ fn apply_fixers(
 fn main() {
     let cli = Cli::parse();
 
-    let issues = match detect_all(&cli.path) {
+    let (issues, _) = match detect_all(&cli.path) {
         Ok(issues) => issues,
         Err(err) => {
             eprintln!("Detection failed: {err}");
