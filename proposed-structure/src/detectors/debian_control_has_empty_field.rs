@@ -17,7 +17,7 @@ fn run(
 
     let mut issues = Vec::new();
 
-    for paragraph in control.content.paragraphs() {
+    for paragraph in control.as_deb822().paragraphs() {
         let package_name = paragraph.get("Package");
         let package_type = get_package_type(&paragraph);
 
@@ -35,7 +35,7 @@ fn run(
                     package_type: package_type.clone(),
                     line: Some(line_number),
                     description: format!(
-                        "Empty field '{}' in {} package '{}' [{}:{}]",
+                        "Empty field '{}' in {} package '{}' [debian/control:{}]",
                         key,
                         if package_type == PackageType::Source {
                             "source"
@@ -43,7 +43,6 @@ fn run(
                             "binary"
                         },
                         package_name.as_deref().unwrap_or("unknown"),
-                        control.path.display(),
                         line_number
                     ),
                     field: Some(key_str.clone()),
@@ -60,10 +59,10 @@ fn run(
     Ok(issues)
 }
 
-// declare_detector! {
-//     tags: ["debian-control-has-empty-field"],
-//     detect: run
-// }
+declare_detector! {
+    tags: ["debian-control-has-empty-field"],
+    detect: run
+}
 
 // #[cfg(test)]
 // mod tests {

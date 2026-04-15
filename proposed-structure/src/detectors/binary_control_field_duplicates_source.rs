@@ -16,11 +16,12 @@ fn run(
     let Some(control) = &files.control else {
         return Ok(vec![]);
     };
+    let control = control.as_deb822();
 
     let mut issues = Vec::new();
 
     // Get source paragraph fields using items() for key-value pairs
-    let source_fields: HashMap<String, String> = match get_source_paragraph(control.content) {
+    let source_fields: HashMap<String, String> = match get_source_paragraph(control) {
         None => {
             return Ok(vec![]);
         }
@@ -29,7 +30,7 @@ fn run(
             .map(|k| (k.to_string(), paragraph.get(&k).unwrap_or_default()))
             .collect(),
     };
-    let binaries = get_binary_paragraphs(control.content);
+    let binaries = get_binary_paragraphs(control);
     // Check binary paragraphs
     for binary in binaries {
         let package_name = binary.get("Package");
@@ -71,10 +72,10 @@ fn run(
     Ok(issues)
 }
 
-// declare_detector! {
-//     tags: ["binary-control-field-duplicates-source"],
-//     detect: run
-// }
+declare_detector! {
+    tags: ["installable-field-mirrors-source"],
+    detect: run
+}
 
 // #[cfg(test)]
 // mod tests {

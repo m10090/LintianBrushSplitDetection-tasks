@@ -4,7 +4,7 @@
 //! e.g., "HomePage" instead of "Homepage".
 
 use crate::{
-    create_issue, DebianFiles, DetectedIssue, DetectorError, detectors::utils::get_package_type,
+     DebianFiles, DetectedIssue, DetectorError, detectors::utils::get_package_type,
 };
 use std::collections::HashSet;
 
@@ -101,7 +101,7 @@ fn run(
     let mut issues = Vec::new();
     let valid_fields = get_valid_fields();
 
-    for paragraph in control.content.paragraphs() {
+    for paragraph in control.as_deb822().paragraphs() {
         let package_name = paragraph.get("Package");
         let package_type = get_package_type(&paragraph);
 
@@ -112,10 +112,9 @@ fn run(
                 let line_number = entry.line() + 1;
 
                 let description = format!(
-                    "Field '{}' has incorrect casing, should be '{}' [{}:{}]",
+                    "Field '{}' has incorrect casing, should be '{}' [debian/control:{}]",
                     key,
                     correct_field,
-                    control.path.display(),
                     line_number
                 );
 
@@ -142,10 +141,10 @@ fn run(
     Ok(issues)
 }
 
-// declare_detector! {
-//     tags: ["cute-field"],
-//     detect: run
-// }
+declare_detector! {
+    tags: ["cute-field"],
+    detect: run
+}
 
 // #[cfg(test)]
 // mod tests {
