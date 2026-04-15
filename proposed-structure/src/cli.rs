@@ -1,7 +1,6 @@
+use proposed_structure::apply_fixers;
 use clap::{ArgAction, Parser};
-use proposed_structure::{
-    detect_all 
-};
+use proposed_structure::{apply_detector_fix, detect_all, load_debian_files};
 use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
 
@@ -55,13 +54,8 @@ fn print_issues(issues: &[proposed_structure::DetectedIssue]) {
     }
 
     println!("\nProposed fixers:");
-    for tag in tags {
-        let fixers = get_fixer_names_for_tag(tag);
-        if fixers.is_empty() {
-            println!("- {tag}: <none>");
-        } else {
-            println!("- {tag}: {}", fixers.join(", "));
-        }
+    for issue in issues {
+        print!("{} ", issue.detector_name);
     }
 }
 
@@ -79,54 +73,16 @@ fn selected_fixers(
 
     let mut selected = BTreeSet::new();
     for issue in issues {
-        for fixer in get_fixer_names_for_tag(&issue.tag) {
-            selected.insert(fixer.to_string());
-        }
+        selected.insert(issue.detector_name.to_string());
     }
     selected.into_iter().collect()
 }
 
-fn apply_fixers(
-    base_path: &std::path::Path,
-    issues: &[proposed_structure::DetectedIssue],
-    fixer_names: &[String],
-    dry_run: bool,
-) -> Result<usize, String> {
-    let mut files = load_debian_files_mut(base_path).map_err(|e| e.to_string())?;
-
-    let mut issues_by_tag: HashMap<&str, Vec<proposed_structure::DetectedIssue>> = HashMap::new();
-    for issue in issues {
-        issues_by_tag
-            .entry(issue.tag.as_str())
-            .or_default()
-            .push(issue.clone());
-    }
-
-    let mut fixed_total = 0usize;
-    for name in fixer_names {
-        let Some(fixer) = get_fixer_by_name(name) else {
-            return Err(format!("unknown fixer: {name}"));
-        };
-        let relevant = issues_by_tag.get(fixer.tag()).cloned().unwrap_or_default();
-        if relevant.is_empty() {
-            continue;
-        }
-        fixed_total += fixer
-            .apply(&relevant, &mut files)
-            .map_err(|e| format!("fixer '{}' failed: {}", fixer.name(), e))?;
-    }
-
-    if !dry_run {
-        files.write_back().map_err(|e| e.to_string())?;
-    }
-
-    Ok(fixed_total)
-}
 
 fn main() {
     let cli = Cli::parse();
 
-    let (issues, _) = match detect_all(&cli.path) {
+    let issues = match detect_all(&cli.path) {
         Ok(issues) => issues,
         Err(err) => {
             eprintln!("Detection failed: {err}");
@@ -154,7 +110,7 @@ fn main() {
     println!("\nSelected fixers: {}", selected.join(", "));
     println!("Mode: {}", if dry_run { "dry-run" } else { "apply" });
 
-    match apply_fixers(&cli.path, &issues, &selected, dry_run) {
+    match apply_fixers(&cli.path, &issues, &selected.as_ref(), dry_run) {
         Ok(count) => {
             if dry_run {
                 println!("Dry-run: {count} change(s) would be applied.");

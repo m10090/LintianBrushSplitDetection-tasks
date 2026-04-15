@@ -8,74 +8,47 @@ mod macros;
 
 pub mod detectors;
 
-use deb822_lossless::Deb822;
+use debian_analyzer::control::TemplatedControlEditor;
+use debian_analyzer::editor::EditorError;
 use lazy_static::lazy_static;
 use std::collections::{HashMap, HashSet};
-use std::fs;
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
 use thiserror::Error;
-
-/// Wrapper for a parsed debian/control file
-#[derive(Debug, Clone)]
-pub struct ControlFile<'a> {
-    /// The parsed deb822 content
-    pub content: &'a Deb822,
-    /// Path to the control file
-    pub path: &'a Path,
-}
 
 /// Collection of all Debian source files (pre-parsed)
 ///
 /// Each field is optional - detectors check for the files they need.
-#[derive(Debug, Default)]
-pub struct DebianFiles<'a> {
+#[derive(Default)]
+pub struct DebianFiles {
     /// The debian/control file (if present and parsed)
-    pub control: Option<ControlFile<'a>>,
+    pub control: Option<TemplatedControlEditor>,
     // Future fields:
     // pub changelog: Option<ChangelogFile<'a>>,
     // pub rules: Option<RulesFile<'a>>,
     // pub copyright: Option<CopyrightFile<'a>>,
 }
 
-/// Owns the parsed data and provides references via `DebianFiles`
-///
-/// This struct owns the parsed content while `DebianFiles` holds references to it.
-#[derive(Debug)]
-pub struct LoadedFiles {
-    control_path: PathBuf, // if needed
-    control_content: Option<Deb822>,
-}
-
-impl LoadedFiles {
-    /// Create a `DebianFiles` view with references to the loaded content
-    pub fn as_ref(&self) -> DebianFiles<'_> {
-        DebianFiles {
-            control: self.control_content.as_ref().map(|content| ControlFile {
-                content,
-                path: &self.control_path,
-            }),
+impl DebianFiles {
+    pub fn write_back(&mut self) -> Result<(), DetectorError> {
+        if let Some(control) = self.control.as_ref() {
+            control.commit()?;
         }
+        Ok(())
     }
 }
 
 /// Load and parse Debian source files from the given base path
-pub fn load_debian_files(base_path: &Path) -> Result<LoadedFiles, DetectorError> {
+pub fn load_debian_files(base_path: &Path) -> Result<DebianFiles, DetectorError> {
     let control_path = base_path.join("debian/control");
 
-    let control_content = if control_path.exists() {
-        let content_str = fs::read_to_string(&control_path)?;
-        let parsed =
-            Deb822::from_str(&content_str).map_err(|e| DetectorError::ParseError(e.to_string()))?;
+    let control = if control_path.exists() {
+        let parsed = TemplatedControlEditor::new(control_path, false)?;
         Some(parsed)
     } else {
         None
     };
 
-    Ok(LoadedFiles {
-        control_path,
-        control_content,
-    })
+    Ok(DebianFiles { control })
 }
 
 /// Represents a detected issue in a debian/control file
@@ -113,6 +86,8 @@ pub enum DetectorError {
     ParseError(String),
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
+    #[error("IO error: {0}")]
+    EditorError(#[from] EditorError),
 }
 
 /// Trait for all detectors
@@ -143,7 +118,7 @@ pub struct DetectorRegistration {
 inventory::collect!(DetectorRegistration);
 
 lazy_static! {
-    static ref DETECTORS: HashMap<&'static str, &'static dyn Detector> = {
+    pub static ref DETECTORS: HashMap<&'static str, &'static dyn Detector> = {
         let mut map = HashMap::new();
         for reg in inventory::iter::<DetectorRegistration> {
             let detectors = (reg.create)();
@@ -165,8 +140,7 @@ pub fn get_detectors() -> Vec<&'static dyn Detector> {
 /// Run all registered detectors and collect all issues
 pub fn detect_all(base_path: &Path) -> Result<Vec<DetectedIssue>, DetectorError> {
     // TODO: add the topological sort
-    let loaded = load_debian_files(base_path)?;
-    let files = loaded.as_ref();
+    let files = load_debian_files(base_path)?;
 
     let mut all_issues = Vec::new();
     for detector in get_detectors() {
@@ -176,46 +150,107 @@ pub fn detect_all(base_path: &Path) -> Result<Vec<DetectedIssue>, DetectorError>
 
     Ok(all_issues)
 }
-pub fn apply_fixers(
-    path: PathBuf,
+pub fn apply_all_fixers(
+    path: &Path,
     issues: &[DetectedIssue],
-    selected: &[&'static str],
     dry_run: bool,
+) -> Result<usize, String> {
+    apply_fixers(
+        path,
+        issues,
+        DETECTORS
+            .keys()
+            .map(|k| k.to_string())
+            .collect::<Vec<_>>()
+            .as_ref(), // this is so bad I know
+        dry_run,
+    )
+}
+
+// pub fn apply_fixers(
+//     path: PathBuf,
+//     issues: &[DetectedIssue],
+//     selected: &[&'static str],
+//     dry_run: bool,
+// ) -> Result<usize, DetectorError> {
+//     let files = load_debian_files(&path)?;
+//     // find detector to solve the issue with
+//     let mut set: HashSet<&'static str> = HashSet::new();
+//     let mut selected_set: HashSet<&'static str> = HashSet::new();
+//     for selected_fixer in selected {
+//         selected_set.insert(selected_fixer);
+//     }
+//     for DetectedIssue { detector_name, .. } in issues {
+//         set.insert(detector_name);
+//     }
+//     let mut fixed = 0;
+//     for detector_name in selected_set.difference(&set) {
+//         let Some(detectors) = DETECTORS.get(detector_name) else {
+//             unreachable!()
+//         };
+//         fixed += detectors
+//             .detect(&files)?
+//             .into_iter()
+//             .fold(0, |acc, (_, fix)| {
+//                 if let Some(fix) = fix {
+//                     // apply
+//                     fix();
+//                     acc + 1
+//                 } else {
+//                     acc
+//                 }
+//             });
+//     }
+//     if !dry_run {
+//         eprintln!("this mode isn't suppprted now");
+//     }
+//     Ok(fixed)
+// }
+pub fn apply_detector_fix(
+    detector_name: &str,
+    files: &DebianFiles,
 ) -> Result<usize, DetectorError> {
-    let loaded = load_debian_files(&path)?;
-    let files = loaded.as_ref();
-    // find detector to solve the issue with
-    let mut set: HashSet<&'static str> = HashSet::new();
-    let mut selected_set: HashSet<&'static str> = HashSet::new();
-    for selected_fixer in selected {
-        selected_set.insert(selected_fixer);
-    }
-    for DetectedIssue { detector_name, .. } in issues {
-        set.insert(detector_name);
-    }
+    let Some(detector) = DETECTORS.get(detector_name) else {
+        return Ok(0);
+    };
     let mut fixed = 0;
-    for detector_name in selected_set.difference(&set) {
-        let Some(detectors) = DETECTORS.get(detector_name) else {
-            unreachable!()
+    for (_, fix) in detector.detect(files)? {
+        let Some(fix) = fix else {
+            continue;
         };
-        fixed += detectors
-            .detect(&files)?
-            .into_iter()
-            .fold(0, |acc, (_, fix)| {
-                if let Some(fix) = fix {
-                    // apply
-                    fix();
-                    acc + 1
-                } else {
-                    acc
-                }
-            });
-    }
-    if !dry_run {
-        eprintln!("this mode isn't suppprted now");
+        fix();
+        fixed += 1;
     }
     Ok(fixed)
 }
+pub fn apply_fixers(
+    base_path: &std::path::Path,
+    issues: &[DetectedIssue],
+    fixer_names: &[String],
+    dry_run: bool,
+) -> Result<usize, String> {
+    let mut files = load_debian_files(base_path).map_err(|e| e.to_string())?;
+
+    let mut issues_by_tag: HashMap<&str, Vec<DetectedIssue>> = HashMap::new();
+    for issue in issues {
+        issues_by_tag
+            .entry(issue.tag.as_str())
+            .or_default()
+            .push(issue.clone());
+    }
+
+    let mut fixed_total = 0usize;
+    for name in fixer_names {
+        fixed_total += apply_detector_fix(name, &files).map_err(|e| e.to_string())?;
+    }
+
+    if !dry_run {
+        files.write_back().map_err(|e| e.to_string())?;
+    }
+
+    Ok(fixed_total)
+}
+
 // #[cfg(test)]
 // mod tests {
 // comment out for refactoring
