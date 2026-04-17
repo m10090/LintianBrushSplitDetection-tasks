@@ -6,8 +6,9 @@
 #[macro_use]
 mod macros;
 
+mod apply_action;
 pub mod detectors;
-pub mod fixers;
+pub use apply_action::apply_action;
 
 use deb822_lossless::Deb822;
 use debian_analyzer::control::TemplatedControlEditor;
@@ -318,10 +319,16 @@ pub fn detect_all(base_path: &Path) -> Result<Vec<DetectedIssue>, DetectorError>
 /// Apply all registered fixers to the provided issues
 pub fn fix_all(base_path: &Path, issues: &[DetectedIssue]) -> Result<usize, FixerError> {
     let mut files = load_debian_files_mut(base_path)?;
-    let mut fixed_count = 0usize;
 
+    // Apply actions emitted by detectors directly to the editor-backed files.
+    // This uses the new Action enum carried by DetectedIssue.
+    // First, apply any explicit actions produced by detectors.
+    let mut fixed_count = apply_action(&mut files, issues);
+
+    // For issues that don't carry an explicit Action, fall back to running
+    // registered fixers (preserves previous behaviour for tests and existing fixers).
     let mut issues_by_tag: HashMap<&str, Vec<DetectedIssue>> = HashMap::new();
-    for issue in issues {
+    for issue in issues.iter().filter(|i| i.action.is_none()) {
         issues_by_tag
             .entry(issue.tag.as_str())
             .or_default()
@@ -428,19 +435,6 @@ Description: Test package
     }
 
     #[test]
-    fn test_get_fixer_names_for_tag() {
-        let fixers = get_fixer_names_for_tag("cute-field");
-        assert!(fixers.contains(&"field-name-typo-in-control"));
-    }
-
-    #[test]
-    fn test_get_fixer_by_name() {
-        let fixer = get_fixer_by_name("field-name-typo-in-control");
-        assert!(fixer.is_some());
-        assert_eq!(fixer.unwrap().tag(), "cute-field");
-    }
-
-    #[test]
     fn test_fix_all_uses_only_matching_tag_issues() {
         let content = "Source: test-package\nMaintainer:\nHomePage: https://example.com\n\nPackage: test-package\nArchitecture: any\nDescription: Test\n";
         let temp_dir = setup_control_file(content);
@@ -452,6 +446,12 @@ Description: Test package
             package_type: PackageType::Source,
             line: Some(3),
             field: Some("HomePage".to_string()),
+            action: Some(Action::UpdateKey {
+                package: None,
+                package_type: PackageType::Source,
+                old_key: "HomePage".to_string(),
+                new_key: "Homepage".to_string(),
+            }),
         }];
 
         let fixed = fix_all(temp_dir.path(), &issues).unwrap();
