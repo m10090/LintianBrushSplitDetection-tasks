@@ -135,3 +135,48 @@ Description: Multi test
         remaining
     );
 }
+
+#[test]
+fn test_integration_fix_ancient_python_versions() {
+    let content = r#"Source: test-package
+X-Python-Version: >= 2.5
+X-Python3-Version: >= 3.2
+Maintainer: Test <test@example.com>
+
+Package: test-package
+Architecture: any
+Description: Test package
+"#;
+    let temp_dir = setup_control_file(content);
+
+    // Detect issues
+    let issues = detect_all(temp_dir.path()).unwrap();
+    let py_issues: Vec<_> = issues
+        .iter()
+        .filter(|i| i.tag == "ancient-python-version-field")
+        .collect();
+
+    assert!(
+        !py_issues.is_empty(),
+        "Expected at least one ancient-python-version-field issue"
+    );
+
+    // Fix issues
+    let fixed = fix_all(temp_dir.path(), &issues).unwrap();
+    assert_eq!(
+        fixed,
+        py_issues.len(),
+        "Expected fixes equal to detected python issues"
+    );
+
+    // Verify file contents
+    let updated = fs::read_to_string(temp_dir.path().join("debian/control")).unwrap();
+    assert!(!updated.contains("X-Python-Version"));
+    assert!(!updated.contains("X-Python3-Version"));
+
+    // Verify no remaining ancient-python-version-field issues
+    let remaining = detect_all(temp_dir.path()).unwrap();
+    assert!(remaining
+        .iter()
+        .all(|i| i.tag != "ancient-python-version-field"));
+}

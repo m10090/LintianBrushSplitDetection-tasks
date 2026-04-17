@@ -39,10 +39,10 @@ fn find_version_in_line(line: &str) -> Option<(u8, u8)> {
         let token = token.trim_matches(|c: char| c == ':' || c == ',' || c == ';');
         if token.chars().all(|c| c.is_ascii_digit() || c == '.') && token.contains('.') {
             let mut parts = token.splitn(2, '.');
-            if let (Some(maj), Some(min)) = (parts.next(), parts.next()) {
-                if let (Ok(maj), Ok(min)) = (maj.parse::<u8>(), min.parse::<u8>()) {
-                    return Some((maj, min));
-                }
+            if let (Some(maj), Some(min)) = (parts.next(), parts.next())
+                && let (Ok(maj), Ok(min)) = (maj.parse::<u8>(), min.parse::<u8>())
+            {
+                return Some((maj, min));
             }
         }
     }
@@ -55,28 +55,31 @@ fn load_thresholds() -> ((u8, u8), (u8, u8)) {
     let mut py2 = None;
     let mut py3 = None;
 
-    if let Ok(content) = fs::read_to_string(path) {
-        for raw_line in content.lines() {
-            let line = raw_line.split('#').next().unwrap_or("").trim();
-            if line.is_empty() {
-                continue;
-            }
+    let content =
+        fs::read_to_string(path).unwrap_or_else(|_| panic!("Error: couldn't parse  {}", path));
 
-            if line.contains("old-python3") {
-                if let Some(v) = find_version_in_line(line) {
-                    py3 = Some(v);
-                }
-            }
+    for raw_line in content.lines() {
+        let line = raw_line.split('#').next().unwrap_or("").trim();
+        if line.is_empty() {
+            continue;
+        }
 
-            if line.contains("old-python2") || line.contains("old-python") {
-                if let Some(v) = find_version_in_line(line) {
-                    py2 = Some(v);
-                }
-            }
+        if line.contains("old-python3")
+            && let Some(v) = find_version_in_line(line)
+        {
+            py3 = Some(v);
+        }
+        if (line.contains("old-python2") || line.contains("old-python"))
+            && let Some(v) = find_version_in_line(line)
+        {
+            py2 = Some(v);
         }
     }
 
-    (py2.unwrap_or(FALLBACK_OLD_PY2), py3.unwrap_or(FALLBACK_OLD_PY3))
+    (
+        py2.unwrap_or(FALLBACK_OLD_PY2),
+        py3.unwrap_or(FALLBACK_OLD_PY3),
+    )
 }
 
 fn run(files: &DebianFiles) -> Result<Vec<DetectedIssue>, DetectorError> {
@@ -145,10 +148,10 @@ declare_detector! {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::PackageType;
     use crate::{Detector, load_debian_files};
     use std::fs;
     use tempfile::TempDir;
-    use crate::PackageType;
 
     fn setup_control_file(content: &str) -> TempDir {
         let temp_dir = TempDir::new().unwrap();
