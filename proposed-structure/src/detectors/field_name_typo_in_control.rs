@@ -3,9 +3,7 @@
 //! Detects fields where the casing doesn't match the canonical Debian field names,
 //! e.g., "HomePage" instead of "Homepage".
 
-use crate::{
-    DebianFiles, DetectedIssue, DetectorError, detectors::utils::get_package_type,
-};
+use crate::{DebianFiles, DetectedIssue, DetectorError, detectors::utils::get_package_type};
 use std::collections::HashSet;
 
 /// Known valid source field names in debian/control
@@ -123,6 +121,12 @@ fn run(files: &DebianFiles) -> Result<Vec<DetectedIssue>, DetectorError> {
                     package_type: package_type.clone(),
                     line: Some(line_number),
                     field: Some(key.to_string()),
+                    action: Some(crate::Action::UpdateKey {
+                        package: package_name.clone(),
+                        package_type: package_type.clone(),
+                        old_key: key,
+                        new_key: correct_field.to_string(),
+                    }),
                 });
             }
         }
@@ -139,8 +143,8 @@ declare_detector! {
 
 #[cfg(test)]
 mod tests {
-    use crate::PackageType;
     use super::*;
+    use crate::PackageType;
     use crate::{Detector, load_debian_files};
     use std::fs;
     use tempfile::TempDir;

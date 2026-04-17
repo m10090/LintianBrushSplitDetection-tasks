@@ -9,7 +9,6 @@ use crate::{
 };
 use std::collections::HashMap;
 
-
 fn run(files: &DebianFiles) -> Result<Vec<DetectedIssue>, DetectorError> {
     let Some(control) = &files.control else {
         return Ok(vec![]);
@@ -34,7 +33,6 @@ fn run(files: &DebianFiles) -> Result<Vec<DetectedIssue>, DetectorError> {
         let package_name = binary.get("Package");
         // Use entries() to get line numbers directly
         for entry in binary.entries() {
-
             if let Some(key) = entry.key()
                 && let Some(source_value) = source_fields.get(&key.to_string())
                 && let value = entry.value()
@@ -57,6 +55,11 @@ fn run(files: &DebianFiles) -> Result<Vec<DetectedIssue>, DetectorError> {
                     package_type: PackageType::Binary,
                     line: Some(line_number),
                     field: Some(key.to_string()),
+                    action: Some(crate::Action::DeleteKey {
+                        package: package_name.clone(),
+                        package_type: PackageType::Binary,
+                        key,
+                    }),
                 });
             }
         }

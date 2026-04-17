@@ -137,9 +137,11 @@ pub struct DetectedIssue {
     pub line: Option<usize>,
     /// The field name involved (if applicable)
     pub field: Option<String>,
+    /// Action to fix the issue
+    pub action: Option<Action>, // this could be an array in future
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 enum Action {
     UpdateKey {
         package: Option<String>,

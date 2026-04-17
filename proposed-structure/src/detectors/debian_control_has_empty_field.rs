@@ -44,6 +44,11 @@ fn run(files: &DebianFiles) -> Result<Vec<DetectedIssue>, DetectorError> {
                     package_type: package_type.clone(),
                     line: Some(line_number),
                     field: Some(key.to_string()),
+                    action: Some(crate::Action::DeleteKey {
+                        package: package_name.clone(),
+                        package_type: package_type.clone(),
+                        key,
+                    }),
                 });
             }
         }
