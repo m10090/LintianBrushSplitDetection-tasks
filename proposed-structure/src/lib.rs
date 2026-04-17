@@ -13,8 +13,6 @@ pub use apply_action::apply_action;
 use deb822_lossless::Deb822;
 use debian_analyzer::control::TemplatedControlEditor;
 use debian_analyzer::editor::EditorError;
-use lazy_static::lazy_static;
-use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
@@ -51,7 +49,7 @@ pub struct LoadedFiles {
     control_content: Option<Deb822>,
 }
 
-/// Mutable wrapper for a parsed debian/control file used by fixers
+/// Mutable wrapper for a parsed debian/control file used by [crate::apply_action::apply_action]
 pub struct ControlFileMut {
     /// Mutable editor for debian/control (supports templates)
     pub editor: TemplatedControlEditor,
@@ -239,41 +237,9 @@ pub struct DetectorRegistration {
     pub create: fn() -> Box<dyn Detector>,
 }
 
-/// Registration information for a fixer
-pub struct FixerRegistration {
-    /// Name of the fixer
-    pub name: &'static str,
-    /// Lintian tag this fixer handles
-    pub lintian_tag: &'static str,
-    /// Human-readable description
-    pub description: &'static str,
-    /// Function to create an instance of the fixer
-    pub create: fn() -> Box<dyn Fixer>,
-}
 
 inventory::collect!(DetectorRegistration);
-inventory::collect!(FixerRegistration);
 
-lazy_static! {
-    static ref FIXER_NAME_TO_FACTORY: HashMap<&'static str, fn() -> Box<dyn Fixer>> = {
-        let mut map = HashMap::new();
-        for reg in inventory::iter::<FixerRegistration> {
-            map.insert(reg.name, reg.create);
-        }
-        map
-    };
-    static ref TAG_TO_FIXERS: HashMap<&'static str, Vec<&'static str>> = {
-        let mut map: HashMap<&'static str, Vec<&'static str>> = HashMap::new();
-        for reg in inventory::iter::<FixerRegistration> {
-            map.entry(reg.lintian_tag).or_default().push(reg.name);
-        }
-        for names in map.values_mut() {
-            names.sort_unstable();
-            names.dedup();
-        }
-        map
-    };
-}
 
 /// Get all registered detectors
 pub fn get_detectors() -> Vec<Box<dyn Detector>> {
@@ -283,23 +249,6 @@ pub fn get_detectors() -> Vec<Box<dyn Detector>> {
         .collect()
 }
 
-/// Get all registered fixers
-pub fn get_fixers() -> Vec<Box<dyn Fixer>> {
-    inventory::iter::<FixerRegistration>
-        .into_iter()
-        .map(|reg| (reg.create)())
-        .collect()
-}
-
-/// Get fixer names that can handle a lintian tag
-pub fn get_fixer_names_for_tag(tag: &str) -> Vec<&'static str> {
-    TAG_TO_FIXERS.get(tag).cloned().unwrap_or_default()
-}
-
-/// Construct a fixer by name
-pub fn get_fixer_by_name(name: &str) -> Option<Box<dyn Fixer>> {
-    FIXER_NAME_TO_FACTORY.get(name).map(|factory| (factory)())
-}
 
 /// Run all registered detectors and collect all issues
 pub fn detect_all(base_path: &Path) -> Result<Vec<DetectedIssue>, DetectorError> {
@@ -323,25 +272,8 @@ pub fn fix_all(base_path: &Path, issues: &[DetectedIssue]) -> Result<usize, Fixe
     // Apply actions emitted by detectors directly to the editor-backed files.
     // This uses the new Action enum carried by DetectedIssue.
     // First, apply any explicit actions produced by detectors.
-    let mut fixed_count = apply_action(&mut files, issues);
+    let fixed_count = apply_action(&mut files, issues);
 
-    // For issues that don't carry an explicit Action, fall back to running
-    // registered fixers (preserves previous behaviour for tests and existing fixers).
-    let mut issues_by_tag: HashMap<&str, Vec<DetectedIssue>> = HashMap::new();
-    for issue in issues.iter().filter(|i| i.action.is_none()) {
-        issues_by_tag
-            .entry(issue.tag.as_str())
-            .or_default()
-            .push(issue.clone());
-    }
-
-    for (tag, tag_issues) in issues_by_tag {
-        for fixer_name in get_fixer_names_for_tag(tag) {
-            if let Some(fixer) = get_fixer_by_name(fixer_name) {
-                fixed_count += fixer.apply(&tag_issues, &mut files)?;
-            }
-        }
-    }
 
     files.write_back()?;
     Ok(fixed_count)
