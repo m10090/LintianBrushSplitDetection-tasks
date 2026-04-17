@@ -139,6 +139,33 @@ pub struct DetectedIssue {
     pub field: Option<String>,
 }
 
+#[derive(Debug)]
+enum Action {
+    UpdateKey {
+        package: Option<String>,
+        package_type: PackageType,
+        old_key: String,
+        new_key: String,
+    },
+    DeleteKey {
+        package: Option<String>,
+        package_type: PackageType,
+        key: String,
+    },
+    UpdateValue {
+        package: Option<String>,
+        package_type: PackageType,
+        key: String,
+        current_value: String,
+        new_value: String,
+    },
+    NormalizeFieldSpacing {
+        package: Option<String>,
+        package_type: PackageType,
+        key: String,
+    },
+}
+
 /// Type of package where the issue was found
 #[derive(Debug, Clone, PartialEq)]
 pub enum PackageType {
