@@ -17,6 +17,8 @@ inventory = "0.3"
 lazy_static = "1.5.0"
 debian-analyzer = "0.160.14"
 clap = { version = "4.5", features = ["derive"] }
+debian-control = "0.3"
+debversion = "0.5"
 
 [dev-dependencies]
 tempfile = "3"

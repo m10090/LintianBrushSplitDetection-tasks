@@ -1571,6 +1571,8 @@ dependencies = [
  "clap",
  "deb822-lossless",
  "debian-analyzer",
+ "debian-control",
+ "debversion",
  "inventory",
  "lazy_static",
  "regex",
