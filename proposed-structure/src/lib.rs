@@ -11,6 +11,8 @@ pub mod detectors;
 pub use apply_action::apply_action;
 
 use deb822_lossless::Deb822;
+use debian_control::lossless::relations::Relations;
+use debian_control::lossy::Relation;
 use debian_analyzer::control::TemplatedControlEditor;
 use debian_analyzer::editor::EditorError;
 use std::fs;
@@ -159,6 +161,16 @@ enum Action {
         key: String,
         current_value: String,
         new_value: String,
+    },
+    /// Structured relation update: drop specific dependencies and ensure minimum
+    /// versions for specified packages. This is preferable to replacing the
+    /// entire field text because it describes semantic edits.
+    UpdateRelation {
+        package: Option<String>,
+        package_type: PackageType,
+        key: String,
+        remove: Vec<Relation>,
+        add: Vec<Relation>,
     },
     NormalizeFieldSpacing {
         package: Option<String>,
