@@ -58,9 +58,15 @@ Description: Test package
     // 3. Verify file contents
     let updated = fs::read_to_string(temp_dir.path().join("debian/control")).unwrap();
     assert!(updated.contains("Source: test-package\nSection: utils\nPriority: optional"));
-    assert!(!updated.contains("Section: utils\nPriority: optional\nDescription:"));
     assert!(
-        updated.contains("Package: test-package\nArchitecture: any\nDescription: Test package")
+        !updated.contains("Section: utils\nPriority: optional\nDescription:"),
+        "{}",
+        updated
+    );
+    assert!(updated.contains(
+        "Package: test-package\nArchitecture: any\nDescription: Test package"),
+        "{}",
+        updated
     );
 
     // 4. Verify no remaining issues
@@ -114,7 +120,7 @@ Description: Multi test
     assert!(has_typo, "Missing typo issue for HomePage");
 
     // 2. Fix issues (will dispatch to 3 separate fixers based on the tags)
-    let _fixed = apply_all_fixers(temp_dir.path(), &issues,false).unwrap();
+    let _fixed = apply_all_fixers(temp_dir.path(), &issues, false).unwrap();
     // this assert fails showing that 2 detector detected a issue in 2 of them
     // to be exact 'debian-control-has-unusual-field-spacing'
     // and 'debian-control-has-unusual-field-spacing' found the same issue in the feld

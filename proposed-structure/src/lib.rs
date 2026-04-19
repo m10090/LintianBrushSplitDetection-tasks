@@ -155,16 +155,33 @@ pub fn apply_all_fixers(
     issues: &[DetectedIssue],
     dry_run: bool,
 ) -> Result<usize, String> {
-    apply_fixers(
-        path,
-        issues,
-        DETECTORS
-            .keys()
-            .map(|k| k.to_string())
-            .collect::<Vec<_>>()
-            .as_ref(), // this is so bad I know
-        dry_run,
-    )
+    let mut files = load_debian_files(path).map_err(|e| e.to_string())?;
+    let detector_names: HashSet<&'static str> =
+        issues.iter().map(|issue| issue.detector_name).collect();
+
+    let mut detectors_to_apply = vec![];
+    for detector_name in detector_names {
+        if let Some(detector) = DETECTORS.get(detector_name) {
+            detectors_to_apply.push(*detector);
+        }
+    }
+    let mut fixed = 0;
+    for detector in detectors_to_apply {
+        let actions: Vec<_> = detector
+            .detect(&files)
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .filter_map(|res| res.1)
+            .collect();
+        for action in actions {
+            if !dry_run {
+                fixed+=1;
+                action();
+            }
+        }
+    }
+    files.write_back().map_err(|e| e.to_string())?;
+    Ok(fixed)
 }
 
 // pub fn apply_fixers(
@@ -223,32 +240,56 @@ pub fn apply_detector_fix(
     }
     Ok(fixed)
 }
+
+/// Applies all available fixes for selected detectors, refreshing AST after each fix
+/// to prevent stale state corruption.
 pub fn apply_fixers(
-    base_path: &std::path::Path,
+    base_path: &Path,
     issues: &[DetectedIssue],
     fixer_names: &[String],
     dry_run: bool,
 ) -> Result<usize, String> {
-    let mut files = load_debian_files(base_path).map_err(|e| e.to_string())?;
-
-    let mut issues_by_tag: HashMap<&str, Vec<DetectedIssue>> = HashMap::new();
-    for issue in issues {
-        issues_by_tag
-            .entry(issue.tag.as_str())
-            .or_default()
-            .push(issue.clone());
+    if dry_run {
+        return Err("dry_run mode not supported for apply_fixers".to_string());
     }
 
     let mut fixed_total = 0usize;
-    for name in fixer_names {
-        fixed_total += apply_detector_fix(name, &files).map_err(|e| e.to_string())?;
-    }
 
-    if !dry_run {
-        files.write_back().map_err(|e| e.to_string())?;
+    for target_issue in issues {
+        if !fixer_names.contains(&target_issue.detector_name.to_string()) {
+            continue;
+        }
+
+        match fix_issue(base_path, target_issue) {
+            Ok(true) => fixed_total += 1,
+            Ok(false) => {} // Not fixable or issue no longer present
+            Err(e) => return Err(format!("Fix failed for {}: {}", target_issue.tag, e)),
+        }
     }
 
     Ok(fixed_total)
+}
+
+/// Fix a specific detected issue
+pub fn fix_issue(base_path: &Path, target_issue: &DetectedIssue) -> Result<bool, DetectorError> {
+    let mut files = load_debian_files(base_path)?;
+
+    let detector = DETECTORS.get(target_issue.detector_name).ok_or_else(|| {
+        DetectorError::ParseError(format!("Detector {} not found", target_issue.detector_name))
+    })?;
+
+    let detected = detector.detect(&files)?;
+    for (issue, fix_opt) in detected {
+        if issue == *target_issue {
+            if let Some(fix) = fix_opt {
+                fix();
+                files.write_back()?;
+                return Ok(true);
+            }
+        }
+    }
+
+    Ok(false)
 }
 
 // #[cfg(test)]
